@@ -1,0 +1,16 @@
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan.binary
+crash.log
+crash.*.log
+
+# Variable files that might contain secrets
+*.tfvars
+*.tfvars.json
+!terraform.tfvars.example
+
+# AWS
+.aws/
