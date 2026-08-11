@@ -12,12 +12,12 @@ provider "aws" {
   # TODO (CM-6): add a default_tags block so every taggable resource carries
   # Project, Environment, ManagedBy, and ComplianceScope automatically.
 
-    default_tags {
+  default_tags {
     tags = {
       Project         = var.project_name
       Environment     = var.environment
       ManagedBy       = "terraform"
-      ComplianceScope = "pci"   # or whatever value you choose
+      ComplianceScope = "pci" # or whatever value you choose
     }
   }
 }
@@ -60,7 +60,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "primary" {
 
   rule {
     apply_server_side_encryption_by_default {
-      sse_algorithm     = "AES256"
+      sse_algorithm = "AES256"
     }
   }
 }
@@ -70,7 +70,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "log" {
 
   rule {
     apply_server_side_encryption_by_default {
-      sse_algorithm     = "AES256"
+      sse_algorithm = "AES256"
     }
   }
 }
@@ -118,8 +118,8 @@ resource "aws_s3_bucket_ownership_controls" "log" {
 resource "aws_s3_bucket_acl" "log_bucket_acl" {
   bucket = aws_s3_bucket.log.id
   acl    = "log-delivery-write"
-  
-    depends_on = [
+
+  depends_on = [
     aws_s3_bucket_ownership_controls.log,
     aws_s3_bucket_public_access_block.log
   ]
