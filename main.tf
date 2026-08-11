@@ -11,6 +11,15 @@ provider "aws" {
 
   # TODO (CM-6): add a default_tags block so every taggable resource carries
   # Project, Environment, ManagedBy, and ComplianceScope automatically.
+
+    default_tags {
+    tags = {
+      Project         = var.project_name
+      Environment     = var.environment
+      ManagedBy       = "terraform"
+      ComplianceScope = "pci"   # or whatever value you choose
+    }
+  }
 }
 
 resource "random_id" "suffix" {
