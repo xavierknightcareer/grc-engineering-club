@@ -1,36 +1,56 @@
-# Week 1 starter: Your First Compliant Resource
+# S3 Compliance Baseline (SC-28, AC-3, CM-6, AU-3)
 
-This is scaffolding, not a solution. The provider and both buckets are wired up so the project validates out of the box. Your job is to add the five controls marked `# TODO` in `main.tf`.
+I built this Terraform module to lock down an S3 bucket setup against
+four compliance controls: SC-28 for encryption at rest, AC-3 for blocking
+public access, CM-6 for versioning and consistent tagging, and AU-3 for
+access logging. Both buckets get AES-256 encryption and all four
+public-access-block flags turned on. The primary bucket has versioning
+enabled, and every resource carries the same tags so nothing slips
+through untracked. Access logs from the primary bucket flow into a
+separate, locked-down log bucket. To prove it actually works instead of
+just claiming it, the module exports the Terraform plan to JSON and ships
+with a script that checks the live AWS resources against policy.
 
-## Use it
+## What's enforced
+
+| Control | Name                               | How |
+|---------|-------------------------------------|-----|
+| SC-28   | Protection of Information at Rest  | AES-256 encryption on both buckets |
+| AC-3    | Access Enforcement                  | Public access fully blocked (all 4 flags true) on both buckets |
+| CM-6    | Configuration Settings              | Versioning on the primary bucket + consistent tags across everything |
+| AU-3    | Content of Audit Records            | Primary bucket's access logs ship to a dedicated, locked-down log bucket |
+
+## Running it
 
 ```bash
 terraform init
-terraform validate        # passes as-is (skeleton), passes again once you finish
-terraform plan -out=tfplan
-
-mkdir -p evidence
-terraform show -json tfplan > evidence/plan.json
+terraform validate
+terraform plan
+terraform apply
 ```
 
-## What to add (all in main.tf)
+## Checking it actually worked
 
-- SC-28: `aws_s3_bucket_server_side_encryption_configuration` on both buckets
-- CM-6: `aws_s3_bucket_versioning` on the primary
-- AC-3: `aws_s3_bucket_public_access_block` on both buckets (all four flags `true`)
-- AU-3: `aws_s3_bucket_ownership_controls` + `aws_s3_bucket_acl` (log-delivery-write) + `aws_s3_bucket_logging`
-- CM-6 tags are already enforced by the provider `default_tags` block
+Two layers of proof here:
 
-Then uncomment the `encryption_algorithm` output in `outputs.tf`.
+**Before deploying** — the plan gets exported to JSON so you can see exactly
+what's about to be created:
+```bash
+terraform plan -out=tfplan.binary
+terraform show -json tfplan.binary > evidence/plan.json
+```
 
-## Done when
+**After deploying** — `verify.sh` hits the live AWS API and checks that
+encryption, versioning, and the public access flags are actually set the
+way they're supposed to be:
+```bash
+./verify.sh
+```
 
-Run `./verify.sh` after `terraform apply`, or just confirm `evidence/plan.json` contains the encryption rule, the four-flag public access block, the four tags, and the logging block.
+## What's in here
 
-## Files
-
-- `main.tf`: provider, buckets, and the TODOs you complete
-- `variables.tf`: input variables (complete)
-- `outputs.tf`: outputs (one is commented until you add encryption)
-- `verify.sh`: post-apply control checks
-- `terraform.tfvars.example`: copy to `terraform.tfvars` and edit
+- `main.tf` — the buckets and all four controls
+- `variables.tf` — inputs (project name, environment, region)
+- `outputs.tf` — bucket names/ARNs after apply
+- `evidence/plan.json` — the plan output, committed as proof
+- `verify.sh` — live compliance checks
