@@ -43,3 +43,5 @@ Turn on branch protection (Settings, Branches) and require the `grc-gate` check,
 ## Stretch: generate the plan in CI with OIDC
 
 Committing `plan.json` is the simple, free, no-secrets path. The production version has CI generate the plan itself by assuming an AWS role through GitHub OIDC, so there are no stored keys. The brief explains the trust setup if you want to build it.
+
+Gate wired and passing against the compliant plan.
