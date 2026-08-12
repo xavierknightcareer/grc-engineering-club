@@ -1,12 +1,11 @@
 # grc-gate-oidc: the production shape of the gate.
 #
-# Instead of evaluating a committed plan.json, this workflow assumes an AWS role
-# via GitHub OIDC, generates the Terraform plan in CI, and evaluates that.
+# Assumes an AWS role via GitHub OIDC, generates the Terraform plan in CI, and
+# evaluates that. No stored AWS keys. The role is read-only.
 #
-# No stored AWS keys. The runner presents a short-lived token proving which repo
-# it is running in; AWS checks that against the role's trust policy and returns
-# temporary credentials. The role is read-only: terraform plan inspects state and
-# current resources but never changes them.
+# Week 4: evidence is bundled, hashed, and signed with Cosign keyless before the
+# gate decision is enforced, so a failed run is preserved with the same custody
+# guarantees as a passing one.
 name: grc-gate-oidc
 
 on:
@@ -14,8 +13,6 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# id-token: write is what allows the runner to request an OIDC token.
-# Without it the credential step fails and the error does not say why.
 permissions:
   contents: read
   pull-requests: write
@@ -84,26 +81,49 @@ jobs:
             --all-namespaces \
             plan.json || true
 
-          # Keep the generated plan next to the results. Evidence should show
-          # what was evaluated, not just the verdict.
           cp plan.json week-3/evidence/plan.json
 
           FAILURES=$(jq '[.[].failures // [] | length] | add // 0' \
             week-3/evidence/conftest-results.json)
 
           echo "Total policy failures: ${FAILURES}"
+          echo "POLICY_FAILURES=${FAILURES}" >> "${GITHUB_ENV}"
 
-          if [ "${FAILURES}" -gt 0 ]; then
-            echo "::error::Policy gate failed with ${FAILURES} violation(s)."
-            exit 1
-          fi
+      - name: Install cosign
+        if: always()
+        uses: sigstore/cosign-installer@v3
 
-          echo "Policy gate passed."
+      - name: Bundle, hash, and sign evidence
+        if: always()
+        run: |
+          set -euo pipefail
+          tar -czf evidence.tar.gz -C week-3 evidence
+          sha256sum evidence.tar.gz > evidence.tar.gz.sha256
+          cosign sign-blob --yes \
+            --bundle evidence.sig.bundle \
+            evidence.tar.gz
+          cat evidence.tar.gz.sha256
 
-      - name: Upload evidence
+      - name: Upload signed evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: grc-gate-oidc-evidence
-          path: week-3/evidence/
+          path: |
+            evidence.tar.gz
+            evidence.tar.gz.sha256
+            evidence.sig.bundle
           if-no-files-found: warn
+
+      - name: Enforce policy gate
+        if: always()
+        run: |
+          if [ -z "${POLICY_FAILURES:-}" ]; then
+            echo "::error::Gate did not run to completion."
+            exit 1
+          fi
+          if [ "${POLICY_FAILURES}" -gt 0 ]; then
+            echo "::error::Policy gate failed with ${POLICY_FAILURES} violation(s)."
+            exit 1
+          fi
+          echo "Policy gate passed."
