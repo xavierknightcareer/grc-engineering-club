@@ -1,0 +1,67 @@
+# grc-gate: run the policy gate on every pull request.
+# Policies live in week-2/policies/. The compliant plan is committed at
+# week-1/evidence/plan.json. Conftest evaluates the plan against all three
+# policy namespaces; a failure in any namespace fails the job.
+name: grc-gate
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  grc-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Conftest
+        env:
+          CONFTEST_VERSION: 0.69.0
+        run: |
+          curl -sSfL \
+            "https://github.com/open-policy-agent/conftest/releases/download/v${CONFTEST_VERSION}/conftest_${CONFTEST_VERSION}_Linux_x86_64.tar.gz" \
+            -o conftest.tar.gz
+          tar -xzf conftest.tar.gz conftest
+          sudo mv conftest /usr/local/bin/
+          conftest --version
+
+      - name: Run policy gate
+        run: |
+          mkdir -p week-3/evidence
+
+          conftest test \
+            --policy week-2/policies \
+            --all-namespaces \
+            --output json \
+            week-1/evidence/plan.json \
+            > week-3/evidence/conftest-results.json || true
+
+          conftest test \
+            --policy week-2/policies \
+            --all-namespaces \
+            week-1/evidence/plan.json || true
+
+          FAILURES=$(jq '[.[].failures // [] | length] | add // 0' \
+            week-3/evidence/conftest-results.json)
+
+          echo "Total policy failures: ${FAILURES}"
+
+          if [ "${FAILURES}" -gt 0 ]; then
+            echo "::error::Policy gate failed with ${FAILURES} violation(s)."
+            exit 1
+          fi
+
+          echo "Policy gate passed."
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: grc-gate-evidence
+          path: week-3/evidence/
+          if-no-files-found: error
