@@ -40,7 +40,6 @@ jobs:
           role-to-assume: ${{ env.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
           role-session-name: grc-gate-${{ github.run_id }}
-          role-skip-session-tagging: true
 
       - name: Confirm assumed identity
         run: aws sts get-caller-identity
