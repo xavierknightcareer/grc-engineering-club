@@ -1,0 +1,109 @@
+# grc-gate-oidc: the production shape of the gate.
+#
+# Instead of evaluating a committed plan.json, this workflow assumes an AWS role
+# via GitHub OIDC, generates the Terraform plan in CI, and evaluates that.
+#
+# No stored AWS keys. The runner presents a short-lived token proving which repo
+# it is running in; AWS checks that against the role's trust policy and returns
+# temporary credentials. The role is read-only: terraform plan inspects state and
+# current resources but never changes them.
+name: grc-gate-oidc
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# id-token: write is what allows the runner to request an OIDC token.
+# Without it the credential step fails and the error does not say why.
+permissions:
+  contents: read
+  pull-requests: write
+  id-token: write
+
+env:
+  AWS_REGION: us-east-1
+  AWS_ROLE_ARN: arn:aws:iam::517353742262:role/github-actions-terraform-plan
+  TF_VAR_project_name: grc-challenge
+  TF_VAR_environment: dev
+  TF_VAR_region: us-east-1
+
+jobs:
+  grc-gate-oidc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: grc-gate-${{ github.run_id }}
+
+      - name: Confirm assumed identity
+        run: aws sts get-caller-identity
+
+      - name: Install Conftest
+        env:
+          CONFTEST_VERSION: 0.69.0
+        run: |
+          curl -sSfL \
+            "https://github.com/open-policy-agent/conftest/releases/download/v${CONFTEST_VERSION}/conftest_${CONFTEST_VERSION}_Linux_x86_64.tar.gz" \
+            -o conftest.tar.gz
+          tar -xzf conftest.tar.gz conftest
+          sudo mv conftest /usr/local/bin/
+          conftest --version
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+          terraform_wrapper: false
+
+      - name: Generate plan
+        working-directory: week-1
+        run: |
+          terraform init -input=false
+          terraform plan -out=tfplan -input=false
+          terraform show -json tfplan > "${GITHUB_WORKSPACE}/plan.json"
+
+      - name: Run policy gate
+        run: |
+          mkdir -p week-3/evidence
+
+          conftest test \
+            --policy week-2/policies \
+            --all-namespaces \
+            --output json \
+            plan.json \
+            > week-3/evidence/conftest-results.json || true
+
+          conftest test \
+            --policy week-2/policies \
+            --all-namespaces \
+            plan.json || true
+
+          # Keep the generated plan next to the results. Evidence should show
+          # what was evaluated, not just the verdict.
+          cp plan.json week-3/evidence/plan.json
+
+          FAILURES=$(jq '[.[].failures // [] | length] | add // 0' \
+            week-3/evidence/conftest-results.json)
+
+          echo "Total policy failures: ${FAILURES}"
+
+          if [ "${FAILURES}" -gt 0 ]; then
+            echo "::error::Policy gate failed with ${FAILURES} violation(s)."
+            exit 1
+          fi
+
+          echo "Policy gate passed."
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: grc-gate-oidc-evidence
+          path: week-3/evidence/
+          if-no-files-found: error
