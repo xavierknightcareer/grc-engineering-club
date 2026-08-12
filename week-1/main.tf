@@ -55,15 +55,15 @@ resource "aws_s3_bucket" "log" {
 
 # ---------- SC-28: encrypt both buckets at rest ----------
 
-resource "aws_s3_bucket_server_side_encryption_configuration" "primary" {
-  bucket = aws_s3_bucket.primary.id
-
-  rule {
-    apply_server_side_encryption_by_default {
-      sse_algorithm = "AES256"
-    }
-  }
-}
+#resource "aws_s3_bucket_server_side_encryption_configuration" "primary" {
+#  bucket = aws_s3_bucket.primary.id
+#
+#  rule {
+#    apply_server_side_encryption_by_default {
+#      sse_algorithm = "AES256"
+#    }
+#  }
+#}
 
 resource "aws_s3_bucket_server_side_encryption_configuration" "log" {
   bucket = aws_s3_bucket.log.id
